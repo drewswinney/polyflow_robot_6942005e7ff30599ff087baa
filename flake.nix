@@ -327,21 +327,39 @@
         );
 
         # For each ROS package with uv.lock, extract all dependencies from the Python set
-        uvDeps = lib.mapAttrs (pkgName: data:
-          if data.hasWorkspace then
-            let
-              workspace = data.workspace;
-              # Get dependencies from the workspace's pyproject.toml
-              # The workspace.renderers.buildPythonPackage gives us the package with all deps
-              package = workspace.renderers.buildPythonPackage {
-                python = workspacePythonSet;
-              };
-            in
-              # Return the package's propagatedBuildInputs (all dependencies)
-              package.propagatedBuildInputs or []
-          else
-            []
-        ) workspaceData;
+        # The overlay already made them available, we just need to get them
+        uvDeps = lib.mapAttrs (pkgName: pkgInfo:
+          let
+            pkgPath = pkgInfo.path;
+            hasUvLock = builtins.pathExists "${pkgPath}/uv.lock";
+          in
+            if hasUvLock then
+              let
+                # Read all package names from uv.lock
+                lockfile = builtins.fromTOML (builtins.readFile "${pkgPath}/uv.lock");
+                allPackages = lockfile.package or [];
+
+                # Extract package names, excluding the ROS package itself
+                depNames = builtins.filter (n: n != pkgName)
+                  (builtins.map (pkg: pkg.name) allPackages);
+
+                # Get each dependency from the Python set (overlay made them available)
+                # Use tryEval to handle missing packages gracefully
+                tryGetPkg = depName:
+                  let
+                    # Normalize Python package names (replace - with _ for attribute lookup)
+                    attrName = builtins.replaceStrings ["-"] ["_"] depName;
+                    result = builtins.tryEval (workspacePythonSet.${attrName} or null);
+                  in
+                    if result.success && result.value != null then
+                      [result.value]
+                    else
+                      builtins.trace "Warning: ${name}: package ${depName} not found in Python set for ${pkgName}" [];
+              in
+                builtins.concatMap tryGetPkg depNames
+            else
+              []
+        ) pythonPackageDirs;
 
         workspacePackages = lib.mapAttrs (pkgName: pkgInfo:
           let
