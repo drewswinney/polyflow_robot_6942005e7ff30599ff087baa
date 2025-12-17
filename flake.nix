@@ -460,20 +460,20 @@ EOF
         # uv2nix runtime-only dependencies collected from workspace uv.lock files
         uvRuntimePackages = lib.flatten (lib.attrValues uvDeps);
 
-        # Debug: trace what dependencies were found
-        _trace1 = builtins.trace "${name}: uvDeps keys: ${lib.concatStringsSep ", " (lib.attrNames uvDeps)}" null;
-        _trace2 = builtins.trace "${name}: uvRuntimePackages type: ${builtins.typeOf uvRuntimePackages}" null;
-        _trace3 = if builtins.isList uvRuntimePackages then
-              builtins.trace "${name}: Found ${toString (builtins.length uvRuntimePackages)} uv runtime packages" null
-            else
-              builtins.trace "${name}: uvRuntimePackages is not a list!" null;
-        _trace4 = if builtins.isList uvRuntimePackages && builtins.length uvRuntimePackages > 0
-            then builtins.trace "${name}: Package names: ${lib.concatStringsSep ", " (map (pkg: pkg.pname or "unknown") uvRuntimePackages)}" null
-            else null;
+        # Create a debug file to show what dependencies were found
+        debugInfo = pkgs.writeText "${name}-debug-info.txt" ''
+          Workspace: ${name}
+          uvDeps keys: ${lib.concatStringsSep ", " (lib.attrNames uvDeps)}
+          uvRuntimePackages type: ${builtins.typeOf uvRuntimePackages}
+          uvRuntimePackages count: ${toString (builtins.length uvRuntimePackages)}
+          ${if builtins.length uvRuntimePackages > 0
+            then "Package names:\n${lib.concatMapStringsSep "\n" (pkg: "  - ${pkg.pname or "unknown"}") uvRuntimePackages}"
+            else "No packages found!"}
+        '';
 
         runtimeEnv = pkgs.buildEnv {
           name = "${name}-uv-runtime-env";
-          paths = uvRuntimePackages;
+          paths = uvRuntimePackages ++ [ debugInfo ];
           pathsToLink = [ "/lib" "/lib/python3.12/site-packages" ];
         };
 
