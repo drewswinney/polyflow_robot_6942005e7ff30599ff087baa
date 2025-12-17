@@ -309,22 +309,27 @@
                   ]
                 );
 
-                # workspace.deps.all is an attribute set
-                # Values might be functions that take pythonSet, or already resolved packages/lists
-                # Handle both cases
-                allDeps = lib.flatten (lib.mapAttrsToList (depName: depValue:
-                  if builtins.isFunction depValue then
-                    # It's a function, call it with pythonSet
-                    depValue pythonSet
-                  else if builtins.isList depValue then
-                    # It's already a list, use it as-is
-                    depValue
-                  else
-                    # It's a single package/derivation
-                    [ depValue ]
-                ) workspace.deps.all);
+                # Get all dependencies from the workspace
+                # Try workspace.deps.default first (runtime deps), fall back to workspace.deps.all
+                depsToUse = if workspace.deps ? default then workspace.deps.default else workspace.deps.all;
 
-                _ = builtins.trace "${name}: ${pkgName} has ${toString (builtins.length allDeps)} dependencies from uv.lock: ${lib.concatStringsSep ", " (lib.attrNames workspace.deps.all)}" null;
+                # depsToUse is likely a function that takes pythonSet and returns a list
+                allDeps = if builtins.isFunction depsToUse then
+                  depsToUse pythonSet
+                else if builtins.isAttrs depsToUse then
+                  # It's an attribute set, extract all values
+                  lib.flatten (lib.mapAttrsToList (depName: depValue:
+                    if builtins.isFunction depValue then
+                      depValue pythonSet
+                    else if builtins.isList depValue then
+                      depValue
+                    else
+                      [ depValue ]
+                  ) depsToUse)
+                else if builtins.isList depsToUse then
+                  depsToUse
+                else
+                  [];
               in
                 allDeps
             else
@@ -471,6 +476,12 @@ uvRuntimePackages count: ${toString (builtins.length uvRuntimePackages)}
 ${if builtins.length uvRuntimePackages > 0
   then "Package names:\n${lib.concatMapStringsSep "\n" (pkg: "  - ${pkg.pname or "unknown"}") uvRuntimePackages}"
   else "No packages found!"}
+
+Per-package uvDeps details:
+${lib.concatMapStringsSep "\n" (pkgName:
+  let deps = uvDeps.${pkgName};
+  in "  ${pkgName}: ${builtins.typeOf deps}, length=${toString (builtins.length deps)}"
+) (lib.attrNames uvDeps)}
 EOF
         '';
 
