@@ -1,0 +1,68 @@
+logging {
+  level = "info"
+}
+
+loki.relabel "journal_to_service" {
+  forward_to = []
+
+  // Extract service name from systemd unit (e.g., "foo.service" -> "foo")
+  rule {
+    action        = "replace"
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "service"
+    regex         = "^(.*)\\.service$"
+    replacement   = "$1"
+  }
+
+  // Fallback to syslog identifier only if systemd_unit didn't match
+  rule {
+    action        = "replace"
+    source_labels = ["__journal__systemd_unit", "__journal_syslog_identifier"]
+    separator     = ";"
+    target_label  = "service"
+    regex         = "^;(.+)$"
+    replacement   = "$1"
+  }
+}
+
+loki.source.journal "system" {
+  relabel_rules = loki.relabel.journal_to_service.rules
+
+  labels = {
+    job = "system-journal",
+  }
+
+  forward_to = [loki.process.robot.receiver]
+}
+
+loki.process "robot" {
+  // Static labels for robot identity.
+  stage.static_labels {
+    values = {
+      robot_id = "{{ROBOT_ID}}",
+      host     = "{{ROBOT_ID}}.local",
+    }
+  }
+
+  // Parse ROS-style logs to extract exec, level, and node.
+  stage.regex {
+    expression = `.*\[(?P<ros_exec>[^\]]+)\]\s+\[(?P<ros_level>[A-Z]+)\]\s+\[[^\]]+\]\s+\[(?P<ros_node>[^\]]+)\]`
+  }
+
+  stage.labels {
+    values = {
+      ros_exec  = "ros_exec",
+      ros_level = "ros_level",
+      ros_node  = "ros_node",
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+// Push to local Loki.
+loki.write "local" {
+  endpoint {
+    url = "http://127.0.0.1:3100/loki/api/v1/push"
+  }
+}

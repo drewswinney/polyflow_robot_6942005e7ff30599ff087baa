@@ -1,0 +1,166 @@
+{
+  "nodes": {
+    "nix-ros-overlay": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1765614839,
+        "narHash": "sha256-2eC5GsOlQyfkZTaZ0UzMEL64FZXudjvOcpnvM/3DvFw=",
+        "owner": "lopsided98",
+        "repo": "nix-ros-overlay",
+        "rev": "51144d349de66dd00216d2cfade1bf86692ba4f4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "lopsided98",
+        "repo": "nix-ros-overlay",
+        "type": "github"
+      }
+    },
+    "nix-ros-workspace": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1749001346,
+        "narHash": "sha256-q2xrIUD+kgyxGXp6oi7QW0QzxL6PsOODRoj/ru9P9ig=",
+        "owner": "hacker1024",
+        "repo": "nix-ros-workspace",
+        "rev": "e341a5fd27af73be15bc0396c5745c54398193aa",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hacker1024",
+        "repo": "nix-ros-workspace",
+        "type": "github"
+      }
+    },
+    "nixos-hardware": {
+      "locked": {
+        "lastModified": 1764440730,
+        "narHash": "sha256-ZlJTNLUKQRANlLDomuRWLBCH5792x+6XUJ4YdFRjtO4=",
+        "owner": "NixOS",
+        "repo": "nixos-hardware",
+        "rev": "9154f4569b6cdfd3c595851a6ba51bfaa472d9f3",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixos-hardware",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1744849697,
+        "narHash": "sha256-S9hqvanPSeRu6R4cw0OhvH1rJ+4/s9xIban9C4ocM/0=",
+        "owner": "lopsided98",
+        "repo": "nixpkgs",
+        "rev": "6318f538166fef9f5118d8d78b9b43a04bb049e4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "lopsided98",
+        "ref": "nix-ros",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "polyflowRos": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1765933104,
+        "narHash": "sha256-EuEQz/q4vDSYWLCLDldweWVyYFvktuBN6XjVSEOALMk=",
+        "owner": "polyflowrobotics",
+        "repo": "polyflow-ros",
+        "rev": "951ca1172c77390dca9627eacd3688f79dacedd5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "polyflowrobotics",
+        "repo": "polyflow-ros",
+        "type": "github"
+      }
+    },
+    "pyproject-build-systems": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "pyproject-nix": [
+          "pyproject-nix"
+        ],
+        "uv2nix": [
+          "uv2nix"
+        ]
+      },
+      "locked": {
+        "lastModified": 1763662255,
+        "narHash": "sha256-4bocaOyLa3AfiS8KrWjZQYu+IAta05u3gYZzZ6zXbT0=",
+        "owner": "pyproject-nix",
+        "repo": "build-system-pkgs",
+        "rev": "042904167604c681a090c07eb6967b4dd4dae88c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pyproject-nix",
+        "repo": "build-system-pkgs",
+        "type": "github"
+      }
+    },
+    "pyproject-nix": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1764134915,
+        "narHash": "sha256-xaKvtPx6YAnA3HQVp5LwyYG1MaN4LLehpQI8xEdBvBY=",
+        "owner": "pyproject-nix",
+        "repo": "pyproject.nix",
+        "rev": "2c8df1383b32e5443c921f61224b198a2282a657",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pyproject-nix",
+        "repo": "pyproject.nix",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nix-ros-overlay": "nix-ros-overlay",
+        "nix-ros-workspace": "nix-ros-workspace",
+        "nixos-hardware": "nixos-hardware",
+        "nixpkgs": "nixpkgs",
+        "polyflowRos": "polyflowRos",
+        "pyproject-build-systems": "pyproject-build-systems",
+        "pyproject-nix": "pyproject-nix",
+        "uv2nix": "uv2nix"
+      }
+    },
+    "uv2nix": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "pyproject-nix": [
+          "pyproject-nix"
+        ]
+      },
+      "locked": {
+        "lastModified": 1765631794,
+        "narHash": "sha256-90d//IZ4GXipNsngO4sb2SAPbIC/a2P+IAdAWOwpcOM=",
+        "owner": "pyproject-nix",
+        "repo": "uv2nix",
+        "rev": "4cca323a547a1aaa9b94929c4901bed5343eafe8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pyproject-nix",
+        "repo": "uv2nix",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
