@@ -357,14 +357,23 @@
                     # Try workspacePythonSet first
                     result = builtins.tryEval (workspacePythonSet.${attrName} or null);
 
-                    # Fall back to nixpkgs python packages
-                    nixpkgsResult = if result.success && result.value != null then result
-                                   else builtins.tryEval (pkgs.python3Packages.${attrName} or null);
+                    # Fall back to nixpkgs python packages, but check if it's disabled
+                    nixpkgsPkg = if result.success && result.value != null then null
+                                 else (pkgs.python3Packages.${attrName} or null);
+
+                    # Check if the nixpkgs package is disabled for this Python version
+                    isDisabled = if nixpkgsPkg != null && nixpkgsPkg ? disabled
+                                 then nixpkgsPkg.disabled or false
+                                 else false;
+
+                    finalResult = if result.success && result.value != null then result.value
+                                 else if nixpkgsPkg != null && !isDisabled then nixpkgsPkg
+                                 else null;
                   in
-                    if nixpkgsResult.success && nixpkgsResult.value != null then
-                      builtins.trace "${name}: ✓ Found ${depName} as ${attrName}" [nixpkgsResult.value]
+                    if finalResult != null then
+                      builtins.trace "${name}: ✓ Found ${depName} as ${attrName}" [finalResult]
                     else
-                      builtins.trace "${name}: ✗ Package ${depName} (as ${attrName}) not found in Python set for ${pkgName}" [];
+                      builtins.trace "${name}: ✗ Package ${depName} (as ${attrName}) not found or disabled for Python ${pkgs.python3.pythonVersion}" [];
               in
                 builtins.concatMap tryGetPkg depNames
             else
