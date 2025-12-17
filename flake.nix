@@ -309,9 +309,14 @@
                   ]
                 );
 
-                # workspace.deps.all returns a function that takes a Python set and returns all deps
-                # Call it with our pythonSet to get the list of dependency packages
-                allDeps = workspace.deps.all pythonSet;
+                # workspace.deps.all is an attribute set of dependencies
+                # We need to get the actual package derivations by mapping over them
+                allDepsAttrs = workspace.deps.all;
+
+                # Convert the attrs to a list of packages by evaluating each with pythonSet
+                allDeps = lib.mapAttrsToList (depName: depFunc:
+                  depFunc pythonSet
+                ) allDepsAttrs;
 
                 _ = builtins.trace "${name}: ${pkgName} has ${toString (builtins.length allDeps)} dependencies from uv.lock" null;
               in
