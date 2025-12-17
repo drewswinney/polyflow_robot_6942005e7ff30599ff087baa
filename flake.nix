@@ -460,21 +460,24 @@ EOF
         # uv2nix runtime-only dependencies collected from workspace uv.lock files
         uvRuntimePackages = lib.flatten (lib.attrValues uvDeps);
 
-        # Create a debug file to show what dependencies were found
-        debugInfo = pkgs.writeText "${name}-debug-info.txt" ''
-          Workspace: ${name}
-          uvDeps keys: ${lib.concatStringsSep ", " (lib.attrNames uvDeps)}
-          uvRuntimePackages type: ${builtins.typeOf uvRuntimePackages}
-          uvRuntimePackages count: ${toString (builtins.length uvRuntimePackages)}
-          ${if builtins.length uvRuntimePackages > 0
-            then "Package names:\n${lib.concatMapStringsSep "\n" (pkg: "  - ${pkg.pname or "unknown"}") uvRuntimePackages}"
-            else "No packages found!"}
+        # Create a debug package to show what dependencies were found
+        debugInfo = pkgs.runCommand "${name}-debug-info" {} ''
+          mkdir -p $out/share/debug
+          cat > $out/share/debug/uv-deps.txt <<EOF
+Workspace: ${name}
+uvDeps keys: ${lib.concatStringsSep ", " (lib.attrNames uvDeps)}
+uvRuntimePackages type: ${builtins.typeOf uvRuntimePackages}
+uvRuntimePackages count: ${toString (builtins.length uvRuntimePackages)}
+${if builtins.length uvRuntimePackages > 0
+  then "Package names:\n${lib.concatMapStringsSep "\n" (pkg: "  - ${pkg.pname or "unknown"}") uvRuntimePackages}"
+  else "No packages found!"}
+EOF
         '';
 
         runtimeEnv = pkgs.buildEnv {
           name = "${name}-uv-runtime-env";
           paths = uvRuntimePackages ++ [ debugInfo ];
-          pathsToLink = [ "/lib" "/lib/python3.12/site-packages" ];
+          pathsToLink = [ "/lib" "/lib/python3.12/site-packages" "/share" ];
         };
 
         workspaceWithLaunch = pkgs.runCommand "${name}-with-launch" {} ''
