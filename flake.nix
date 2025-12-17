@@ -295,8 +295,8 @@
           in
             if hasPyproject && hasUvLock then
               let
-                # Convert string path to proper path type for uv2nix
-                workspaceRoot = /. + pkgPath;
+                # Convert to proper path type for uv2nix using builtins.path
+                workspaceRoot = builtins.path { path = pkgPath; };
                 workspace = uv2nix.lib.workspace.loadWorkspace { inherit workspaceRoot; };
               in {
                 hasWorkspace = true;
