@@ -14,6 +14,25 @@ export RMW_IMPLEMENTATION
 set -u
 shopt -s nullglob
 
+polyflow_prepend_path_list() {
+  local var_name="$1"
+  local prefix_list="$2"
+  local current_value="${!var_name}"
+
+  local IFS=':'
+  read -ra parts <<< "$prefix_list"
+  for (( idx=${#parts[@]}-1; idx>=0; idx-- )); do
+    local part="${parts[idx]}"
+    [ -z "$part" ] && continue
+    case ":${current_value}:" in
+      *":${part}:"*) ;;
+      *) current_value="${part}${current_value:+:}${current_value}" ;;
+    esac
+  done
+
+  printf -v "$var_name" '%s' "$current_value"
+}
+
 # Load configuration from metadata.json
 METADATA_FILE="/var/lib/polyflow/metadata.json"
 if [ -f "$METADATA_FILE" ]; then
@@ -36,21 +55,12 @@ else
 fi
 
 PYTHONPATH_BASE="@pythonPath@"
-if [ -n "$PYTHONPATH_BASE" ]; then
-  PYTHONPATH="$PYTHONPATH_BASE${PYTHONPATH:+:}${PYTHONPATH}"
-fi
-
 AMENT_PREFIX_BASE="@amentPrefixPath@"
-if [ -n "$AMENT_PREFIX_BASE" ]; then
-  AMENT_PREFIX_PATH="$AMENT_PREFIX_BASE${AMENT_PREFIX_PATH:+:}${AMENT_PREFIX_PATH}"
-fi
-
 LIBRARY_PATH_BASE="@workspaceLibraryPath@"
-if [ -n "$LIBRARY_PATH_BASE" ]; then
-  LD_LIBRARY_PATH="$LIBRARY_PATH_BASE${LD_LIBRARY_PATH:+:}${LD_LIBRARY_PATH}"
-fi
 
-export PYTHONPATH
+polyflow_prepend_path_list AMENT_PREFIX_PATH "$AMENT_PREFIX_BASE"
+polyflow_prepend_path_list LD_LIBRARY_PATH "$LIBRARY_PATH_BASE"
+
 export AMENT_PREFIX_PATH
 export LD_LIBRARY_PATH
 
@@ -68,6 +78,9 @@ for prefix in @workspaceRuntimePrefixes@; do
   done
 done
 set -u
+
+polyflow_prepend_path_list PYTHONPATH "$PYTHONPATH_BASE"
+export PYTHONPATH
 
 echo "[DEBUG] AMENT_PREFIX_PATH=$AMENT_PREFIX_PATH" >&2
 echo "[DEBUG] PYTHONPATH=$PYTHONPATH" >&2
