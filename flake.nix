@@ -298,7 +298,28 @@
                 workspaceRoot = builtins.path { path = pkgPath; };
                 workspace = uv2nix.lib.workspace.loadWorkspace { inherit workspaceRoot; };
 
+                # Check if this package has native-deps.nix
+                nativeDepsFile = "${pkgPath}/native-deps.nix";
+                hasNativeDeps = builtins.pathExists nativeDepsFile;
+                nativeDepsOverlay = if hasNativeDeps then
+                  let
+                    nativeDepsMap = import nativeDepsFile;
+                  in
+                    (final: prev:
+                      lib.attrsets.concatMapAttrs (pyPkgName: nixPkgNames:
+                        lib.optionalAttrs (prev ? ${pyPkgName}) {
+                          ${pyPkgName} = prev.${pyPkgName}.overrideAttrs (old: {
+                            buildInputs = (old.buildInputs or []) ++ (map (n: pkgs.${n}) nixPkgNames);
+                            nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.autoPatchelfHook ];
+                          });
+                        }
+                      ) nativeDepsMap
+                    )
+                else
+                  (final: prev: {});
+
                 # Create overlay and Python set for this specific workspace
+                # Apply native deps overlay AFTER the uv2nix overlay so it can override packages
                 overlay = workspace.mkPyprojectOverlay { sourcePreference = "wheel"; };
                 pythonSet = (pkgs.callPackage pyproject-nix.build.packages {
                   python = pkgs.python3;
@@ -306,6 +327,7 @@
                   lib.composeManyExtensions [
                     pyproject-build-systems.overlays.default
                     overlay
+                    nativeDepsOverlay
                   ]
                 );
 
