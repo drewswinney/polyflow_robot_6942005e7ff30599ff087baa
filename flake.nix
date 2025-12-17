@@ -309,14 +309,17 @@
                   ]
                 );
 
-                # workspace.deps.all is an attribute set of dependencies
-                # We need to get the actual package derivations by mapping over them
-                allDepsAttrs = workspace.deps.all;
+                # workspace.deps.all is an attribute set
+                # Each value might be a function or already a package
+                # Let's try calling it and see what happens
+                allDepsResult = workspace.deps.all pythonSet;
 
-                # Convert the attrs to a list of packages by evaluating each with pythonSet
-                allDeps = lib.mapAttrsToList (depName: depFunc:
-                  depFunc pythonSet
-                ) allDepsAttrs;
+                # allDepsResult should be an attrset of packages, convert to list
+                allDeps = if builtins.isAttrs allDepsResult
+                         then lib.attrValues allDepsResult
+                         else if builtins.isList allDepsResult
+                         then allDepsResult
+                         else [];
 
                 _ = builtins.trace "${name}: ${pkgName} has ${toString (builtins.length allDeps)} dependencies from uv.lock" null;
               in
