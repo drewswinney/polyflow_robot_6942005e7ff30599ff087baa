@@ -310,18 +310,21 @@
                 );
 
                 # workspace.deps.all is an attribute set
-                # Each value might be a function or already a package
-                # Let's try calling it and see what happens
-                allDepsResult = workspace.deps.all pythonSet;
+                # Values might be functions that take pythonSet, or already resolved packages/lists
+                # Handle both cases
+                allDeps = lib.flatten (lib.mapAttrsToList (depName: depValue:
+                  if builtins.isFunction depValue then
+                    # It's a function, call it with pythonSet
+                    depValue pythonSet
+                  else if builtins.isList depValue then
+                    # It's already a list, use it as-is
+                    depValue
+                  else
+                    # It's a single package/derivation
+                    [ depValue ]
+                ) workspace.deps.all);
 
-                # allDepsResult should be an attrset of packages, convert to list
-                allDeps = if builtins.isAttrs allDepsResult
-                         then lib.attrValues allDepsResult
-                         else if builtins.isList allDepsResult
-                         then allDepsResult
-                         else [];
-
-                _ = builtins.trace "${name}: ${pkgName} has ${toString (builtins.length allDeps)} dependencies from uv.lock" null;
+                _ = builtins.trace "${name}: ${pkgName} has ${toString (builtins.length allDeps)} dependencies from uv.lock: ${lib.concatStringsSep ", " (lib.attrNames workspace.deps.all)}" null;
               in
                 allDeps
             else
