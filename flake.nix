@@ -461,13 +461,13 @@ EOF
         uvRuntimePackages = lib.flatten (lib.attrValues uvDeps);
 
         # Debug: trace what dependencies were found
-        _ = builtins.trace "${name}: uvDeps keys: ${lib.concatStringsSep ", " (lib.attrNames uvDeps)}" null;
-        _ = builtins.trace "${name}: uvRuntimePackages type: ${builtins.typeOf uvRuntimePackages}" null;
-        _ = if builtins.isList uvRuntimePackages then
+        _trace1 = builtins.trace "${name}: uvDeps keys: ${lib.concatStringsSep ", " (lib.attrNames uvDeps)}" null;
+        _trace2 = builtins.trace "${name}: uvRuntimePackages type: ${builtins.typeOf uvRuntimePackages}" null;
+        _trace3 = if builtins.isList uvRuntimePackages then
               builtins.trace "${name}: Found ${toString (builtins.length uvRuntimePackages)} uv runtime packages" null
             else
               builtins.trace "${name}: uvRuntimePackages is not a list!" null;
-        _ = if builtins.isList uvRuntimePackages && builtins.length uvRuntimePackages > 0
+        _trace4 = if builtins.isList uvRuntimePackages && builtins.length uvRuntimePackages > 0
             then builtins.trace "${name}: Package names: ${lib.concatStringsSep ", " (map (pkg: pkg.pname or "unknown") uvRuntimePackages)}" null
             else null;
 
