@@ -317,8 +317,8 @@
                 # These are the dependencies we need to build
                 allPackages = uvLockData.package or [];
                 dependencyPackages = builtins.filter (pkg:
-                  # Exclude the workspace package itself (it has source.editable set)
-                  !(pkg.source or {}).editable or false
+                  # Exclude the workspace package itself (it has source.editable set to a path like ".")
+                  !((pkg.source or {}) ? editable)
                 ) allPackages;
 
                 # Map package names to their derivations from pythonSet
