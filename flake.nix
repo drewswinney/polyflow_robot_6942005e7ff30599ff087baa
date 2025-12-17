@@ -326,21 +326,19 @@
           )
         );
 
-        # For each ROS package with uv workspace, build all its dependencies
+        # For each ROS package with uv.lock, extract all dependencies from the Python set
         uvDeps = lib.mapAttrs (pkgName: data:
           if data.hasWorkspace then
             let
-              # Use uv2nix to build all dependencies for this workspace
               workspace = data.workspace;
-              # Get the dependency groups (default + optional dependencies)
-              pythonEnv = workspace.mkVirtualEnv "uv-venv" workspacePythonSet {
-                # Include all dependency groups
-                extras = [];
+              # Get dependencies from the workspace's pyproject.toml
+              # The workspace.renderers.buildPythonPackage gives us the package with all deps
+              package = workspace.renderers.buildPythonPackage {
+                python = workspacePythonSet;
               };
-              # Extract all packages from the virtual environment
-              # The virtual environment's propagatedBuildInputs contains all dependencies
             in
-              pythonEnv.propagatedBuildInputs or []
+              # Return the package's propagatedBuildInputs (all dependencies)
+              package.propagatedBuildInputs or []
           else
             []
         ) workspaceData;
