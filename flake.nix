@@ -343,6 +343,9 @@
                 depNames = builtins.filter (n: n != pkgName)
                   (builtins.map (pkg: pkg.name) allPackages);
 
+                # Debug: trace what we're looking for
+                _ = builtins.trace "${name}: ${pkgName} has uv.lock with ${toString (builtins.length depNames)} dependencies: ${lib.concatStringsSep ", " depNames}" null;
+
                 # Get each dependency from the Python set (overlay made them available)
                 # Use tryEval to handle missing packages gracefully
                 tryGetPkg = depName:
@@ -352,13 +355,13 @@
                     result = builtins.tryEval (workspacePythonSet.${attrName} or null);
                   in
                     if result.success && result.value != null then
-                      [result.value]
+                      builtins.trace "${name}: ✓ Found ${depName} as ${attrName}" [result.value]
                     else
-                      builtins.trace "Warning: ${name}: package ${depName} not found in Python set for ${pkgName}" [];
+                      builtins.trace "${name}: ✗ Package ${depName} (as ${attrName}) not found in Python set for ${pkgName}" [];
               in
                 builtins.concatMap tryGetPkg depNames
             else
-              []
+              (builtins.trace "${name}: ${pkgName} has no uv.lock" [])
         ) pythonPackageDirs;
 
         workspacePackages = lib.mapAttrs (pkgName: pkgInfo:
@@ -489,6 +492,9 @@ EOF
 
         # uv2nix runtime-only dependencies collected from workspace uv.lock files
         uvRuntimePackages = lib.flatten (lib.attrValues uvDeps);
+
+        # Debug: trace what dependencies were found
+        _ = builtins.trace "${name}: Found ${toString (builtins.length uvRuntimePackages)} uv runtime packages" null;
 
         runtimeEnv = pkgs.buildEnv {
           name = "${name}-uv-runtime-env";
