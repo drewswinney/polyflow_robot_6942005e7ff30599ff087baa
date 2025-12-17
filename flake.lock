@@ -66,11 +66,11 @@
     "polyflowRos": {
       "flake": false,
       "locked": {
-        "lastModified": 1765933104,
-        "narHash": "sha256-EuEQz/q4vDSYWLCLDldweWVyYFvktuBN6XjVSEOALMk=",
+        "lastModified": 1766008714,
+        "narHash": "sha256-RGwa5mPGk7F/varD4EKGq9H2rzD80Z04FkMHEEEJN8Q=",
         "owner": "polyflowrobotics",
         "repo": "polyflow-ros",
-        "rev": "951ca1172c77390dca9627eacd3688f79dacedd5",
+        "rev": "df27b244a2f683adfb32fb5007e5b0f6408e48e7",
         "type": "github"
       },
       "original": {
