@@ -348,14 +348,21 @@
 
                 # Get each dependency from the Python set (overlay made them available)
                 # Use tryEval to handle missing packages gracefully
+                # Fall back to nixpkgs if not in workspacePythonSet
                 tryGetPkg = depName:
                   let
                     # Normalize Python package names (replace - with _ for attribute lookup)
                     attrName = builtins.replaceStrings ["-"] ["_"] depName;
+
+                    # Try workspacePythonSet first
                     result = builtins.tryEval (workspacePythonSet.${attrName} or null);
+
+                    # Fall back to nixpkgs python packages
+                    nixpkgsResult = if result.success && result.value != null then result
+                                   else builtins.tryEval (pkgs.python3Packages.${attrName} or null);
                   in
-                    if result.success && result.value != null then
-                      builtins.trace "${name}: ✓ Found ${depName} as ${attrName}" [result.value]
+                    if nixpkgsResult.success && nixpkgsResult.value != null then
+                      builtins.trace "${name}: ✓ Found ${depName} as ${attrName}" [nixpkgsResult.value]
                     else
                       builtins.trace "${name}: ✗ Package ${depName} (as ${attrName}) not found in Python set for ${pkgName}" [];
               in
