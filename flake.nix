@@ -396,6 +396,9 @@
             # Disable Python runtime deps check - this is the correct variable name
             dontCheckRuntimeDeps = true;
 
+            # Allow duplicate dependencies (ROS packages + uv.lock may have different versions)
+            catchConflicts = false;
+
             propagatedBuildInputs = with rosPkgs; [
               rclpy
               launch
