@@ -286,19 +286,34 @@
         ) pythonPackageDirs;
 
         # Create overlays for each ROS package with pyproject.toml
-        workspaceOverlays = lib.mapAttrsToList (pkgName: pkgInfo:
+        # Also store workspace objects for later dependency extraction
+        workspaceData = lib.mapAttrs (pkgName: pkgInfo:
           let
             pkgPath = pkgInfo.path;
             hasPyproject = builtins.pathExists "${pkgPath}/pyproject.toml";
+            hasUvLock = builtins.pathExists "${pkgPath}/uv.lock";
           in
-            if hasPyproject then
+            if hasPyproject && hasUvLock then
               let
                 workspace = uv2nix.lib.workspace.loadWorkspace { workspaceRoot = pkgPath; };
-              in
-                workspace.mkPyprojectOverlay { sourcePreference = "wheel"; }
+              in {
+                hasWorkspace = true;
+                inherit workspace;
+                overlay = workspace.mkPyprojectOverlay { sourcePreference = "wheel"; };
+              }
+            else if hasPyproject then
+              {
+                hasWorkspace = false;
+                overlay = (final: prev: {});
+              }
             else
-              (final: prev: {})  # empty overlay for packages without pyproject.toml
+              {
+                hasWorkspace = false;
+                overlay = (final: prev: {});
+              }
         ) pythonPackageDirs;
+
+        workspaceOverlays = lib.mapAttrsToList (pkgName: data: data.overlay) workspaceData;
 
         # Create Python set with all ROS workspace dependencies
         workspacePythonSet = pyProjectPythonBase.overrideScope (
@@ -309,33 +324,24 @@
           )
         );
 
-        # For each ROS package with a uv.lock, extract all dependencies (including transitive)
-        uvDeps = lib.mapAttrs (pkgName: pkgInfo:
-          let
-            pkgPath = pkgInfo.path;
-            hasUvLock = builtins.pathExists "${pkgPath}/uv.lock";
-          in
-            if hasUvLock then
-              let
-                # Read all package names from uv.lock
-                lockfile = builtins.fromTOML (builtins.readFile "${pkgPath}/uv.lock");
-                allPackages = lockfile.package or [];
-
-                # Extract package names, excluding the package itself
-                depNames = builtins.filter (n: n != pkgName)
-                  (builtins.map (pkg: pkg.name) allPackages);
-
-                # Safely try to get each dependency from the Python set
-                tryGetPkg = depName:
-                  let
-                    result = builtins.tryEval (workspacePythonSet.${depName} or null);
-                  in
-                    if result.success && result.value != null then [result.value] else [];
-              in
-                builtins.concatMap tryGetPkg depNames
-            else
-              []
-        ) pythonPackageDirs;
+        # For each ROS package with uv workspace, build all its dependencies
+        uvDeps = lib.mapAttrs (pkgName: data:
+          if data.hasWorkspace then
+            let
+              # Use uv2nix to build all dependencies for this workspace
+              workspace = data.workspace;
+              # Get the dependency groups (default + optional dependencies)
+              pythonEnv = workspace.mkVirtualEnv "uv-venv" workspacePythonSet {
+                # Include all dependency groups
+                extras = [];
+              };
+              # Extract all packages from the virtual environment
+              # The virtual environment's propagatedBuildInputs contains all dependencies
+            in
+              pythonEnv.propagatedBuildInputs or []
+          else
+            []
+        ) workspaceData;
 
         workspacePackages = lib.mapAttrs (pkgName: pkgInfo:
           let
