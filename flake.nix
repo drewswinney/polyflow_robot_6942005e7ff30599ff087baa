@@ -309,29 +309,31 @@
                   ]
                 );
 
-                # Get all dependencies from the workspace
-                # Try workspace.deps.default first (runtime deps), fall back to workspace.deps.all
-                depsToUse = if workspace.deps ? default then workspace.deps.default else workspace.deps.all;
+                # Parse uv.lock to get all package names that are dependencies
+                uvLockContent = builtins.readFile "${pkgPath}/uv.lock";
+                uvLockData = builtins.fromTOML uvLockContent;
 
-                # depsToUse is likely a function that takes pythonSet and returns a list
-                allDeps = if builtins.isFunction depsToUse then
-                  depsToUse pythonSet
-                else if builtins.isAttrs depsToUse then
-                  # It's an attribute set, extract all values
-                  lib.flatten (lib.mapAttrsToList (depName: depValue:
-                    if builtins.isFunction depValue then
-                      depValue pythonSet
-                    else if builtins.isList depValue then
-                      depValue
-                    else
-                      [ depValue ]
-                  ) depsToUse)
-                else if builtins.isList depsToUse then
-                  depsToUse
-                else
-                  [];
+                # Get all packages from uv.lock except the workspace package itself
+                # These are the dependencies we need to build
+                allPackages = uvLockData.package or [];
+                dependencyPackages = builtins.filter (pkg:
+                  # Exclude the workspace package itself (it has source.editable set)
+                  !(pkg.source or {}).editable or false
+                ) allPackages;
+
+                # Map package names to their derivations from pythonSet
+                allDeps = map (pkg:
+                  let
+                    # Normalize package name: replace underscores with hyphens for pythonSet lookup
+                    normalizedName = builtins.replaceStrings ["_"] ["-"] pkg.name;
+                  in
+                    pythonSet.${normalizedName} or (builtins.trace "Warning: ${name}/${pkgName}: package ${pkg.name} (${normalizedName}) not found in pythonSet" null)
+                ) dependencyPackages;
+
+                # Filter out any null values from packages that weren't found
+                allDepsFiltered = builtins.filter (dep: dep != null) allDeps;
               in
-                allDeps
+                allDepsFiltered
             else
               (builtins.trace "${name}: ${pkgName} has no uv.lock" [])
         ) pythonPackageDirs;
