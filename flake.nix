@@ -461,9 +461,11 @@ EOF
         uvRuntimePackages = lib.flatten (lib.attrValues uvDeps);
 
         # Debug: trace what dependencies were found
-        _ = builtins.trace "${name}: Found ${toString (builtins.length uvRuntimePackages)} uv runtime packages" null;
         _ = builtins.trace "${name}: uvDeps keys: ${lib.concatStringsSep ", " (lib.attrNames uvDeps)}" null;
-        _ = builtins.trace "${name}: Package names: ${lib.concatStringsSep ", " (map (pkg: pkg.pname or "unknown") uvRuntimePackages)}" null;
+        _ = builtins.trace "${name}: Found ${toString (builtins.length uvRuntimePackages)} uv runtime packages" null;
+        _ = if builtins.length uvRuntimePackages > 0
+            then builtins.trace "${name}: Package names: ${lib.concatStringsSep ", " (map (pkg: pkg.pname or "unknown") uvRuntimePackages)}" null
+            else builtins.trace "${name}: No UV runtime packages found" null;
 
         runtimeEnv = pkgs.buildEnv {
           name = "${name}-uv-runtime-env";
