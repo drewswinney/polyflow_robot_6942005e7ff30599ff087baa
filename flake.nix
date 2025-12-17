@@ -466,7 +466,7 @@ EOF
         runtimeEnv = pkgs.buildEnv {
           name = "${name}-uv-runtime-env";
           paths = uvRuntimePackages;
-          pathsToLink = [ "/lib" ];
+          pathsToLink = [ "/lib" "/lib/python3.12/site-packages" ];
         };
 
         workspaceWithLaunch = pkgs.runCommand "${name}-with-launch" {} ''
