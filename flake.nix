@@ -285,49 +285,8 @@
               (final: prev: {})  # empty overlay
         ) pythonPackageDirs;
 
-        # Create overlays for each ROS package with pyproject.toml
-        # Also store workspace objects for later dependency extraction
-        workspaceData = lib.mapAttrs (pkgName: pkgInfo:
-          let
-            pkgPath = pkgInfo.path;
-            hasPyproject = builtins.pathExists "${pkgPath}/pyproject.toml";
-            hasUvLock = builtins.pathExists "${pkgPath}/uv.lock";
-          in
-            if hasPyproject && hasUvLock then
-              let
-                # Convert to proper path type for uv2nix using builtins.path
-                workspaceRoot = builtins.path { path = pkgPath; };
-                workspace = uv2nix.lib.workspace.loadWorkspace { inherit workspaceRoot; };
-              in {
-                hasWorkspace = true;
-                inherit workspace;
-                overlay = workspace.mkPyprojectOverlay { sourcePreference = "wheel"; };
-              }
-            else if hasPyproject then
-              {
-                hasWorkspace = false;
-                overlay = (final: prev: {});
-              }
-            else
-              {
-                hasWorkspace = false;
-                overlay = (final: prev: {});
-              }
-        ) pythonPackageDirs;
-
-        workspaceOverlays = lib.mapAttrsToList (pkgName: data: data.overlay) workspaceData;
-
-        # Create Python set with all ROS workspace dependencies
-        workspacePythonSet = pyProjectPythonBase.overrideScope (
-          lib.composeManyExtensions (
-            [ pyproject-build-systems.overlays.default ]
-            ++ workspaceOverlays
-            ++ nativeOverlays  # Apply native dependency overrides from each package
-          )
-        );
-
-        # For each ROS package with uv.lock, extract all dependencies from the Python set
-        # The overlay already made them available, we just need to get them
+        # For each ROS package with uv.lock, get the dependency packages directly
+        # workspace.deps.all provides all dependencies as a list
         uvDeps = lib.mapAttrs (pkgName: pkgInfo:
           let
             pkgPath = pkgInfo.path;
@@ -335,47 +294,28 @@
           in
             if hasUvLock then
               let
-                # Read all package names from uv.lock
-                lockfile = builtins.fromTOML (builtins.readFile "${pkgPath}/uv.lock");
-                allPackages = lockfile.package or [];
+                # Convert to proper path type for uv2nix
+                workspaceRoot = builtins.path { path = pkgPath; };
+                workspace = uv2nix.lib.workspace.loadWorkspace { inherit workspaceRoot; };
 
-                # Extract package names, excluding the ROS package itself
-                depNames = builtins.filter (n: n != pkgName)
-                  (builtins.map (pkg: pkg.name) allPackages);
+                # Create overlay and Python set for this specific workspace
+                overlay = workspace.mkPyprojectOverlay { sourcePreference = "wheel"; };
+                pythonSet = (pkgs.callPackage pyproject-nix.build.packages {
+                  python = pkgs.python3;
+                }).overrideScope (
+                  lib.composeManyExtensions [
+                    pyproject-build-systems.overlays.default
+                    overlay
+                  ]
+                );
 
-                # Debug: trace what we're looking for
-                _ = builtins.trace "${name}: ${pkgName} has uv.lock with ${toString (builtins.length depNames)} dependencies: ${lib.concatStringsSep ", " depNames}" null;
+                # workspace.deps.all returns a function that takes a Python set and returns all deps
+                # Call it with our pythonSet to get the list of dependency packages
+                allDeps = workspace.deps.all pythonSet;
 
-                # Get each dependency from the Python set (overlay made them available)
-                # Use tryEval to handle missing packages gracefully
-                # Fall back to nixpkgs if not in workspacePythonSet
-                tryGetPkg = depName:
-                  let
-                    # Normalize Python package names (replace - with _ for attribute lookup)
-                    attrName = builtins.replaceStrings ["-"] ["_"] depName;
-
-                    # Try workspacePythonSet first
-                    result = builtins.tryEval (workspacePythonSet.${attrName} or null);
-
-                    # Fall back to nixpkgs python packages, but check if it's disabled
-                    nixpkgsPkg = if result.success && result.value != null then null
-                                 else (pkgs.python3Packages.${attrName} or null);
-
-                    # Check if the nixpkgs package is disabled for this Python version
-                    isDisabled = if nixpkgsPkg != null && nixpkgsPkg ? disabled
-                                 then nixpkgsPkg.disabled or false
-                                 else false;
-
-                    finalResult = if result.success && result.value != null then result.value
-                                 else if nixpkgsPkg != null && !isDisabled then nixpkgsPkg
-                                 else null;
-                  in
-                    if finalResult != null then
-                      builtins.trace "${name}: ✓ Found ${depName} as ${attrName}" [finalResult]
-                    else
-                      builtins.trace "${name}: ✗ Package ${depName} (as ${attrName}) not found or disabled for Python ${pkgs.python3.pythonVersion}" [];
+                _ = builtins.trace "${name}: ${pkgName} has ${toString (builtins.length allDeps)} dependencies from uv.lock" null;
               in
-                builtins.concatMap tryGetPkg depNames
+                allDeps
             else
               (builtins.trace "${name}: ${pkgName} has no uv.lock" [])
         ) pythonPackageDirs;
@@ -546,11 +486,7 @@ EOF
           then workspaceWithLaunch
           else workspaceBase;
       in {
-        inherit workspace workspaceBase runtimeEnv workspacePackages uvRuntimePackages;
-        nativeOverlays = nativeOverlays;
-        workspaceOverlays = workspaceOverlays;
-        pythonSet = workspacePythonSet;
-        uvDeps = uvDeps;
+        inherit workspace workspaceBase runtimeEnv workspacePackages uvRuntimePackages uvDeps;
       };
 
     # nodes.launch.py - optional for base repo, required for robot repos
