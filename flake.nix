@@ -462,10 +462,14 @@ EOF
 
         # Debug: trace what dependencies were found
         _ = builtins.trace "${name}: uvDeps keys: ${lib.concatStringsSep ", " (lib.attrNames uvDeps)}" null;
-        _ = builtins.trace "${name}: Found ${toString (builtins.length uvRuntimePackages)} uv runtime packages" null;
-        _ = if builtins.length uvRuntimePackages > 0
+        _ = builtins.trace "${name}: uvRuntimePackages type: ${builtins.typeOf uvRuntimePackages}" null;
+        _ = if builtins.isList uvRuntimePackages then
+              builtins.trace "${name}: Found ${toString (builtins.length uvRuntimePackages)} uv runtime packages" null
+            else
+              builtins.trace "${name}: uvRuntimePackages is not a list!" null;
+        _ = if builtins.isList uvRuntimePackages && builtins.length uvRuntimePackages > 0
             then builtins.trace "${name}: Package names: ${lib.concatStringsSep ", " (map (pkg: pkg.pname or "unknown") uvRuntimePackages)}" null
-            else builtins.trace "${name}: No UV runtime packages found" null;
+            else null;
 
         runtimeEnv = pkgs.buildEnv {
           name = "${name}-uv-runtime-env";
