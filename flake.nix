@@ -85,16 +85,7 @@
     lib     = pkgs.lib;
     rosPkgs = pkgs.rosPackages.humble;
 
-    # Metadata configuration
-    # Build-time values come from environment variables with sensible defaults
-    # To set robot-specific values, export environment variables before building:
-    #   export ROBOT_ID="my-robot"
-    #   export GITHUB_USER="myuser"
-    #   nixos-generate ...
-    #
-    # Or use the helper script to decrypt and export from metadata.json:
-    #   eval $(nix run .#decrypt-and-export-metadata)
-    #   nixos-generate ...
+    # Metadata configuration from environment variables
     metadata =
       let
         getValue = envName: default:
@@ -103,7 +94,6 @@
           in
             if envValue != "" then envValue else default;
       in {
-        # Use valid defaults that satisfy NixOS validation
         robotId = getValue "ROBOT_ID" "polyflow-robot";
         signalingUrl = getValue "SIGNALING_URL" "wss://example.com";
         password = getValue "PASSWORD" "changeme";
@@ -118,7 +108,7 @@
     ############################################################################
     mkPackageDirs = { basePath, filterFn ? (_: _: true), label, vendorLayout ? true, flatVendor ? "." }:
       if basePath == null || !builtins.pathExists basePath then
-        builtins.trace ''${label}: base path ${toString basePath} missing; skipping'' {}
+        {}
       else
         let
           packagesAll =
@@ -141,13 +131,8 @@
                 pkgDirs = lib.filterAttrs (_: v: v == "directory") (builtins.readDir basePath);
               in
                 lib.mapAttrs (pkg: _: { path = "${toString basePath}/${pkg}"; vendor = flatVendor; }) pkgDirs;
-
-          filtered = lib.filterAttrs filterFn packagesAll;
-          summary = map (name: let info = filtered.${name}; in "${info.vendor}/${name}") (lib.attrNames filtered);
         in
-          builtins.trace
-            ''${label}: found ROS dirs ${lib.concatStringsSep ", " summary} under ${toString basePath}''
-            filtered;
+          lib.filterAttrs filterFn packagesAll;
 
     rosLibsCandidates = [
       ./libs
@@ -177,8 +162,7 @@
       flatVendor = "system";
     };
 
-    # Base Python set for pyproject-nix/uv2nix packages
-    # pyproject-build-systems expects annotated-types to exist; ensure it is present.
+    # Base Python set for pyproject-nix/uv2nix with annotated-types
     pythonForPyproject = pkgs.python3.override {
       packageOverrides = final: prev: {
         "annotated-types" =
@@ -202,7 +186,6 @@
       python = pythonForPyproject;
     };
 
-    # Robot Console static assets (expects dist/ already built in ./robot-console)
     robotConsoleSrc = builtins.path { path = ./robot-console; name = "robot-console-src"; };
 
     robotConsole = pkgs.stdenv.mkDerivation {
@@ -223,7 +206,6 @@
       '';
     };
 
-    # Robot API (FastAPI) packaged from ./robot-api
     robotApiSrc = pkgs.lib.cleanSource ./robot-api;
     robotApi = pkgs.python3Packages.buildPythonPackage {
       pname = "robot-api";
@@ -248,17 +230,10 @@
     ############################################################################
     mkRosWorkspace = { name, packageDirs, enableLaunch ? false, launchPath ? null }:
       let
-        # Only keep packages that declare a pyproject.toml
         pythonPackageDirs = lib.filterAttrs (pkgName: pkgInfo:
-          let
-            pkgPath = pkgInfo.path;
-            hasPyproject = builtins.pathExists "${pkgPath}/pyproject.toml";
-          in
-            if hasPyproject then true
-            else builtins.trace ''${name}: skipping ${pkgName}; no pyproject.toml in ${pkgPath}'' false
+          builtins.pathExists "${pkgInfo.path}/pyproject.toml"
         ) packageDirs;
 
-        # Load native dependency overrides from each workspace package
         nativeOverlays = lib.mapAttrsToList (pkgName: pkgInfo:
           let
             pkgPath = pkgInfo.path;
@@ -267,10 +242,8 @@
           in
             if hasNativeDeps then
               let
-                # Load mapping: { python-pkg-name = [ "nixpkg1" "nixpkg2" ]; }
                 nativeDepsMap = import nativeDepsFile;
               in
-                # Convert to overlay
                 (final: prev:
                   lib.attrsets.concatMapAttrs (pyPkgName: nixPkgNames:
                     lib.optionalAttrs (prev ? ${pyPkgName}) {
@@ -282,11 +255,9 @@
                   ) nativeDepsMap
                 )
             else
-              (final: prev: {})  # empty overlay
+              (final: prev: {})
         ) pythonPackageDirs;
 
-        # For each ROS package with uv.lock, get the dependency packages directly
-        # workspace.deps.all provides all dependencies as a list
         uvDeps = lib.mapAttrs (pkgName: pkgInfo:
           let
             pkgPath = pkgInfo.path;
@@ -294,11 +265,9 @@
           in
             if hasUvLock then
               let
-                # Convert to proper path type for uv2nix
                 workspaceRoot = builtins.path { path = pkgPath; };
                 workspace = uv2nix.lib.workspace.loadWorkspace { inherit workspaceRoot; };
 
-                # Check if this package has native-deps.nix
                 nativeDepsFile = "${pkgPath}/native-deps.nix";
                 hasNativeDeps = builtins.pathExists nativeDepsFile;
                 nativeDepsOverlay = if hasNativeDeps then
@@ -318,8 +287,6 @@
                 else
                   (final: prev: {});
 
-                # Create overlay and Python set for this specific workspace
-                # Apply native deps overlay AFTER the uv2nix overlay so it can override packages
                 overlay = workspace.mkPyprojectOverlay { sourcePreference = "wheel"; };
                 pythonSet = (pkgs.callPackage pyproject-nix.build.packages {
                   python = pkgs.python3;
@@ -331,40 +298,29 @@
                   ]
                 );
 
-                # Parse uv.lock to get all package names that are dependencies
                 uvLockContent = builtins.readFile "${pkgPath}/uv.lock";
                 uvLockData = builtins.fromTOML uvLockContent;
-
-                # Get all packages from uv.lock except the workspace package itself
-                # These are the dependencies we need to build
                 allPackages = uvLockData.package or [];
                 dependencyPackages = builtins.filter (pkg:
-                  # Exclude the workspace package itself (it has source.editable set to a path like ".")
                   !((pkg.source or {}) ? editable)
                 ) allPackages;
 
-                # Map package names to their derivations from pythonSet
-                allDeps = map (pkg:
+                allDeps = builtins.filter (dep: dep != null) (map (pkg:
                   let
-                    # Normalize package name: replace underscores with hyphens for pythonSet lookup
                     normalizedName = builtins.replaceStrings ["_"] ["-"] pkg.name;
                   in
-                    pythonSet.${normalizedName} or (builtins.trace "Warning: ${name}/${pkgName}: package ${pkg.name} (${normalizedName}) not found in pythonSet" null)
-                ) dependencyPackages;
-
-                # Filter out any null values from packages that weren't found
-                allDepsFiltered = builtins.filter (dep: dep != null) allDeps;
+                    pythonSet.${normalizedName} or null
+                ) dependencyPackages);
               in
-                allDepsFiltered
+                allDeps
             else
-              (builtins.trace "${name}: ${pkgName} has no uv.lock" [])
+              []
         ) pythonPackageDirs;
 
         workspacePackages = lib.mapAttrs (pkgName: pkgInfo:
           let
             pkgPath = pkgInfo.path;
             hasPyproject = builtins.pathExists "${pkgPath}/pyproject.toml";
-            # Read version from pyproject.toml if it exists, otherwise use default
             version = if hasPyproject then
               (builtins.fromTOML (builtins.readFile "${pkgPath}/pyproject.toml")).project.version
             else
@@ -388,14 +344,9 @@
               pkgs.python3Packages.setuptools
             ];
 
-            # Skip runtime/runtime-deps checks; ROS launch handles runtime resolution
             nativeCheckInputs = [];
             doCheck = false;
-
-            # Disable Python runtime deps check - this is the correct variable name
             dontCheckRuntimeDeps = true;
-
-            # Allow duplicate dependencies (ROS packages + uv.lock may have different versions)
             catchConflicts = false;
 
             propagatedBuildInputs = with rosPkgs; [
@@ -412,71 +363,32 @@
               set -euo pipefail
               pkg="${pkgName}"
 
-              echo "[postInstall] Processing package: $pkg" >&2
-              echo "[postInstall] Build directory (PWD): $PWD" >&2
-              echo "[postInstall] Listing build directory contents:" >&2
-              ls -la . >&2 || true
-
-              # 1: ament index registration
+              # Ament index registration
               mkdir -p $out/share/ament_index/resource_index/packages
               echo "$pkg" > $out/share/ament_index/resource_index/packages/$pkg
 
-              # 2: package share (package.xml + launch)
+              # Package share (package.xml + launch files)
               mkdir -p $out/share/$pkg/
-              if [ -f package.xml ]; then
-                echo "[postInstall] Copying package.xml" >&2
-                cp package.xml $out/share/$pkg/
-              else
-                echo "[postInstall] No package.xml found" >&2
-              fi
+              [ -f package.xml ] && cp package.xml $out/share/$pkg/ || true
+              [ -f node.launch.py ] && cp node.launch.py $out/share/$pkg/ || true
+              [ -f $pkg.launch.py ] && cp $pkg.launch.py $out/share/$pkg/ || true
+              [ -d launch ] && cp -r launch $out/share/$pkg/ || true
 
-              # Copy launch files - try both naming conventions
-              # 1. node.launch.py (standard name)
-              if [ -f node.launch.py ]; then
-                echo "[postInstall] Copying node.launch.py" >&2
-                cp node.launch.py $out/share/$pkg/
-              else
-                echo "[postInstall] No node.launch.py found" >&2
-              fi
-
-              # 2. $pkg.launch.py (package-named launch file, e.g., webrtc.launch.py)
-              if [ -f $pkg.launch.py ]; then
-                echo "[postInstall] Copying $pkg.launch.py" >&2
-                cp $pkg.launch.py $out/share/$pkg/
-              else
-                echo "[postInstall] No $pkg.launch.py found" >&2
-              fi
-
-              # 3. Copy entire launch directory if it exists
-              if [ -d launch ]; then
-                echo "[postInstall] Copying launch directory" >&2
-                cp -r launch $out/share/$pkg/
-              else
-                echo "[postInstall] No launch directory found" >&2
-              fi
-
-              # Resource marker(s)
+              # Resource markers
               if [ -f resource/$pkg ]; then
-                echo "[postInstall] Copying resource marker file" >&2
                 install -Dm644 resource/$pkg $out/share/$pkg/resource/$pkg
               elif [ -d resource ]; then
-                echo "[postInstall] Copying resource directory" >&2
                 mkdir -p $out/share/$pkg/resource
                 cp -r resource/* $out/share/$pkg/resource/ || true
-              else
-                echo "[postInstall] No resource marker or directory found" >&2
               fi
 
-              # 3: libexec shim so launch_ros finds the executable under lib/$pkg/$pkg_node
+              # Libexec shim for launch_ros
               mkdir -p $out/lib/$pkg
               cat > "$out/lib/$pkg/''${pkg}_node" <<EOF
 #!${pkgs.bash}/bin/bash
 exec ${pkgs.python3}/bin/python3 -m ${pkgName}.node "\$@"
 EOF
               chmod +x $out/lib/$pkg/''${pkg}_node
-
-              echo "[postInstall] Final package share directory contents:" >&2
-              ls -la $out/share/$pkg/ >&2 || true
             '';
           }
         ) packageDirs;
@@ -486,56 +398,24 @@ EOF
           paths = lib.attrValues workspacePackages;
         };
 
-        # uv2nix runtime-only dependencies collected from workspace uv.lock files
         uvRuntimePackages = lib.flatten (lib.attrValues uvDeps);
-
-        # Create a debug package to show what dependencies were found
-        debugInfo = pkgs.runCommand "${name}-debug-info" {} ''
-          mkdir -p $out/share/debug
-          cat > $out/share/debug/uv-deps.txt <<EOF
-Workspace: ${name}
-uvDeps keys: ${lib.concatStringsSep ", " (lib.attrNames uvDeps)}
-uvRuntimePackages type: ${builtins.typeOf uvRuntimePackages}
-uvRuntimePackages count: ${toString (builtins.length uvRuntimePackages)}
-${if builtins.length uvRuntimePackages > 0
-  then "Package names:\n${lib.concatMapStringsSep "\n" (pkg: "  - ${pkg.pname or "unknown"}") uvRuntimePackages}"
-  else "No packages found!"}
-
-Per-package uvDeps details:
-${lib.concatMapStringsSep "\n" (pkgName:
-  let deps = uvDeps.${pkgName};
-  in "  ${pkgName}: ${builtins.typeOf deps}, length=${toString (builtins.length deps)}"
-) (lib.attrNames uvDeps)}
-EOF
-        '';
 
         runtimeEnv = pkgs.buildEnv {
           name = "${name}-uv-runtime-env";
-          paths = uvRuntimePackages ++ [ debugInfo ];
-          pathsToLink = [ "/lib" "/lib/python3.12/site-packages" "/share" ];
+          paths = uvRuntimePackages;
+          pathsToLink = [ "/lib" "/lib/python3.12/site-packages" ];
         };
 
         workspaceWithLaunch = pkgs.runCommand "${name}-with-launch" {} ''
-          # Create output directory structure
           mkdir -p $out
-
-          # Copy everything from base workspace EXCEPT share directory
           if [ -d "${workspaceBase}" ]; then
             for item in ${workspaceBase}/*; do
               itemname=$(basename "$item")
-              if [ "$itemname" != "share" ]; then
-                cp -r "$item" "$out/"
-              fi
+              [ "$itemname" != "share" ] && cp -r "$item" "$out/" || true
             done
           fi
-
-          # Create fresh share directory and copy contents
           mkdir -p $out/share
-          if [ -d "${workspaceBase}/share" ]; then
-            cp -r ${workspaceBase}/share/* $out/share/ 2>/dev/null || true
-          fi
-
-          # Add nodes.launch.py
+          [ -d "${workspaceBase}/share" ] && cp -r ${workspaceBase}/share/* $out/share/ 2>/dev/null || true
           cp ${launchPath} $out/share/nodes.launch.py
         '';
 
@@ -546,8 +426,6 @@ EOF
         inherit workspace workspaceBase runtimeEnv workspacePackages uvRuntimePackages uvDeps;
       };
 
-    # nodes.launch.py - optional for base repo, required for robot repos
-    # Generated by polyflow-studio and placed at repo root
     workspaceLaunchPath = ./nodes.launch.py;
 
     rosWorkspaceSet = mkRosWorkspace {
@@ -567,15 +445,12 @@ EOF
     systemRosWorkspace = systemRosWorkspaceSet.workspace;
     systemRosRuntimeEnv = systemRosWorkspaceSet.runtimeEnv;
 
-    # Python (ROS toolchain) + helpers
     rosPy = rosPkgs.python3;
-    # Keep ament_python builds on the ROS Python set; do not fall back to the repo-pinned 3.12 toolchain.
     rosPyPkgs = rosPkgs.python3Packages or (rosPy.pkgs or (throw "rosPkgs.python3Packages unavailable"));
     py = pkgs.python3;
     pyPkgs = py.pkgs or pkgs.python3Packages;
     sp = py.sitePackages;
 
-    # Build a fixed osrf-pycommon (PEP 517), reusing nixpkgs' source
     osrfSrc = pkgs.python3Packages."osrf-pycommon".src;
 
     osrfFixed = pyPkgs.buildPythonPackage {
@@ -587,7 +462,6 @@ EOF
       doCheck      = false;
     };
 
-    # Minimal Python environment for ROS tooling and helpers
     pyEnv = py.withPackages (ps: [
       ps.pyyaml
       ps.empy
